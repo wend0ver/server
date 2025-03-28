@@ -79,38 +79,25 @@ export class GameRoom extends Room<GimkitState> {
             player.syncPhysics(true);
         });
 
-        this.onMsg("START_GAME", (player) => {
-            if(!player.isHost) return;
-            if(this.state.session.phase !== "preGame") return;
+        // Loads plugins to the room
+        const path = require("path");
+        const pluginFiles = fs.readdirSync("./plugins").filter(file => file.endsWith(".js") || file.endsWith(".ts"));
 
-            this.state.session.phase = "game";
-            this.state.session.gameSession.phase = "game";
-            this.gameStarted = Date.now() + 1200;
-            this.showLoading(1200, () => {
-                this.teams.start();
-                for(let p of this.players.values()) p.moveToSpawnpoint();
+        for (const file of pluginFiles) {
+            const filePath = path.resolve(`./plugins/${file}`);
+
+            import(filePath).then(plugin => {
+                if (typeof plugin.default === "function") {
+                    plugin.default(this);
+                } else if (typeof plugin.main === "function") {
+                    plugin.main(this);
+                } else {
+                    console.error(`Plugin ${file} does not export main function`);
+                }
+            }).catch(error => {
+                console.error(`Failed to load plugin ${file}:`, error);
             });
-        });
-
-        this.onMsg("END_GAME", (player) => {
-            if(!player.isHost) return;
-            if(this.state.session.phase !== "game") return;
-
-            this.state.session.gameSession.phase = "results";
-        });
-
-        this.onMsg("RESTORE_MAP_EARLIER", (player) => {
-            if(!player.isHost) return;
-            if(this.state.session.phase !== "game" || this.state.session.gameSession.phase !== "results") return;
-
-            this.state.session.phase = "preGame";
-            this.showLoading(1200, () => {
-                this.broadcast("RESET");
-                this.devices.restore();
-                this.teams.restore();
-                for(let p of this.players.values()) p.moveToSpawnpoint();
-            });
-        });
+        }
         
         this.onMessage("*", (client, type: string, message) => {
             let player = this.players.get(client);
